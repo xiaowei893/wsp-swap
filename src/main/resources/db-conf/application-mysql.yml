@@ -1,0 +1,14 @@
+# -------------------------------------------------------------
+# 生产环境 MySQL 主数据源配置 (OLTP)
+# -------------------------------------------------------------
+spring:
+  datasource:
+    dynamic:
+      primary: mysql_master
+      strict: false
+      datasource:
+        mysql_master:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: ${PROD_MYSQL_URL:jdbc:mysql://192.168.50.52:3306/wsp_swap?useUnicode=true&characterEncoding=utf-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
+          username: ${PROD_MYSQL_USER:root}
+          password: ${PROD_MYSQL_PASSWORD:Zkjs@2709}

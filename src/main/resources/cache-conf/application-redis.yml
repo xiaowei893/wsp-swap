@@ -1,0 +1,24 @@
+# -------------------------------------------------------------
+# 生产环境 Redis 配置（可按需切换为单机、哨兵或集群模式）
+# -------------------------------------------------------------
+aio:
+  redis:
+    key-prefix: "wsp-swap"
+    enable-key-prefix: true
+    allowed-packages:
+      - "com.zkjs.aio.swap."
+
+spring:
+  data:
+    redis:
+      host: ${PROD_REDIS_HOST:127.0.0.1}
+      port: ${PROD_REDIS_PORT:6379}
+      password: ${PROD_REDIS_PASSWORD:123456}
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 32
+          max-idle: 16
+          min-idle: 4
+          max-wait: 3000ms

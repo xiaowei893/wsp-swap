@@ -1,0 +1,12 @@
+# -------------------------------------------------------------
+# 生产环境 ClickHouse 列式分析数据源配置 (OLAP)
+# -------------------------------------------------------------
+spring:
+  datasource:
+    dynamic:
+      datasource:
+        clickhouse_db:
+          driver-class-name: com.clickhouse.jdbc.ClickHouseDriver
+          url: ${PROD_CLICKHOUSE_URL:jdbc:clickhouse://192.168.50.50:8123/wsp_swap?ssl=false}
+          username: ${PROD_CLICKHOUSE_USER:zkjsdap}
+          password: ${PROD_CLICKHOUSE_PASSWORD:z1k2j3s4}

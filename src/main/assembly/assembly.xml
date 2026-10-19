@@ -1,0 +1,39 @@
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.2.0 http://maven.apache.org/xsd/assembly-2.2.0.xsd">
+    <id>release</id>
+    <formats>
+        <!-- 仅生成 tar.gz 格式发布包 -->
+        <format>tar.gz</format>
+    </formats>
+    <!-- 解压时是否包含外层根目录（false 代表解压后直接平级展开 jar 与 config/ 目录） -->
+    <includeBaseDirectory>false</includeBaseDirectory>
+
+    <fileSets>
+        <!-- 1. 将构建好的 Spring Boot 可执行 Jar 放到发布包根目录 -->
+        <fileSet>
+            <directory>${project.build.directory}</directory>
+            <outputDirectory>/</outputDirectory>
+            <includes>
+                <include>${project.build.finalName}.jar</include>
+            </includes>
+            <fileMode>0755</fileMode>
+        </fileSet>
+
+        <!-- 2. 将 resources 下的所有配置文件与目录（包括 cache-conf、db-conf、db-sql 等）复制到与 jar 平级的 config/ 目录 -->
+        <fileSet>
+            <directory>src/main/resources</directory>
+            <outputDirectory>/config</outputDirectory>
+            <fileMode>0644</fileMode>
+        </fileSet>
+
+        <!-- 3. 创建空的 logs 运行时日志目录 -->
+        <fileSet>
+            <directory>src/main/resources</directory>
+            <outputDirectory>/logs</outputDirectory>
+            <excludes>
+                <exclude>**/*</exclude>
+            </excludes>
+        </fileSet>
+    </fileSets>
+</assembly>

@@ -1,0 +1,14 @@
+# -------------------------------------------------------------
+# 人大金仓数据库主数据源配置 (KingbaseES V8 / V9 - OLTP)
+# -------------------------------------------------------------
+spring:
+  datasource:
+    dynamic:
+      primary: kingbase_db
+      strict: false
+      datasource:
+        kingbase_db:
+          driver-class-name: com.kingbase8.Driver
+          url: ${KINGBASE_URL:jdbc:kingbase8://127.0.0.1:54321/wsp_swap?currentSchema=public&characterEncoding=utf8}
+          username: ${KINGBASE_USER:SYSTEM}
+          password: ${KINGBASE_PASSWORD:Kingbase@123}

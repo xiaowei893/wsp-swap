@@ -1,0 +1,134 @@
+server:
+  port: 9980
+spring:
+  application:
+    name: wsp-swap
+  # 相对路径引入（自适应：本地运行相对于 classpath 根目录；发布包运行相对于 ./config 目录）
+  config:
+    import:
+      # 1. 缓存组件
+      - cache-conf/application-redis.yml
+      # 2. 列式分析数据源 (OLAP)
+      - db-conf/application-clickhouse.yml
+      # 3. 关系型主数据源 (OLTP - 默认 mysql，可通过系统环境变量 DB_TYPE 切换：dm / hg / kingbase / postgres)
+      - optional:db-conf/application-${DB_TYPE:mysql}.yml
+      # 4. 消息队列组件
+      - application-kafka.yml
+  webflux:
+    base-path: /swap
+  # WebFlux 编解码器全局缓冲区限制（解决文件上传与请求体默认 256KB 截断限制）
+  codec:
+    max-in-memory-size: 50MB
+  profiles:
+    # 全局激活环境：dev 开发环境，prod 生产环境
+    active: dev
+aio:
+  # -------------------------------------------------------------
+  # 跨域资源共享配置 (CORS - 遵循 AIO Framework WebFlux 响应式规约)
+  # -------------------------------------------------------------
+  cors:
+    enabled: true                     # 是否启用跨域过滤器（默认 true）
+    path-pattern: "/**"               # 拦截路径
+    allowed-origin-patterns: "*"      # 允许的跨域来源（支持纯逗号分割，如: https://admin.zkjs.com, https://app.zkjs.com）
+    allowed-methods: "*"              # 允许的 HTTP 方法（支持纯逗号分割，如: GET, POST, PUT, DELETE）
+    allowed-headers: "*"              # 允许的请求头（支持纯逗号分割，如: Authorization, Content-Type, X-Requested-With）
+    allow-credentials: true          # 允许携带 Cookie
+    max-age: 1800                    # 预检缓存时长（秒）
+
+  # -------------------------------------------------------------
+  # 响应式链路追踪 (Trace - 遵循 AIO Framework Trace 规约)
+  # -------------------------------------------------------------
+  trace:
+    enabled: true                     # 是否启用链路追踪（默认 true）
+    header-name: X-Request-Id         # 响应头透传与回传的 Key（默认 X-Request-Id）
+
+  # -------------------------------------------------------------
+  # Web 安全防护配置 (XSS 跨站脚本与 SQL 注入防御)
+  # -------------------------------------------------------------
+  security:
+    # XSS 跨站脚本防护配置
+    xss:
+      enabled: true                   # 是否开启 XSS 防护（默认 true）
+      mode: ESCAPE                    # 防护模式：ESCAPE（自动实体转义）/ REJECT（检测即阻断报错）
+      exclude-patterns:               # 排除白名单路径（支持 Ant 通配符）
+        - "/api/article/content/**"
+        - "/doc.html"
+        - "/webjars/**"
+    # SQL 注入防护配置
+    sql-injection:
+      enabled: true                   # 是否开启 SQL 注入检查（默认 true）
+      exclude-patterns:               # 排除白名单路径（如自定义报表接口）
+        - "/api/report/custom-query/**"
+        - "/doc.html"
+        - "/webjars/**"
+
+  # -------------------------------------------------------------
+  # 文件上传限制配置 (Upload - 响应式大文件与磁盘缓冲规约)
+  # -------------------------------------------------------------
+  upload:
+    enabled: true
+    max-parts: 10                     # 单次最多允许上传的 Part 数量
+    max-file-size: 50MB               # 单个文件最大大小
+    max-disk-usage-per-part: 100MB    # 单 Part 最大磁盘暂存容量
+    max-in-memory-size: 2MB           # 内存缓冲阈值，超出写入临时磁盘文件，避免堆内存 OOM
+
+  # -------------------------------------------------------------
+  # 持久层与多数据源配置
+  # -------------------------------------------------------------
+  datasource:
+    # 是否在服务启动时自动检查并创建数据库（仅对 MySQL、PostgreSQL、clickhouse 生效,国产数据库需要手动创建）
+    auto-create-database: true
+    # 分页插件单页查询上限，防止大分页内存溢出 (OOM)
+    max-limit: 500
+    # 是否在服务启动时自动检查并执行数据库版本迁移升级（默认 true，开箱即用）
+    auto-migrate: true
+    # 数据库升级脚本在 resources 下的根目录（默认 "db-sql"，即 resources/db-sql/）
+    migration-location: db-sql
+
+  # -------------------------------------------------------------
+  # Sa-Token 响应式多账号认证体系配置 (WebFlux Reactor)
+  # -------------------------------------------------------------
+  sa-token:
+    # 1. 管理员账号体系 (Admin) 配置
+    admin:
+      token-name: "AIO-ADMIN-TOKEN"   # HTTP 请求头或 Cookie 中携带的 Token 键名
+      timeout: 604800                 # Token 最大有效时间（秒），默认 7 天（-1 代表永不过期）
+      active-timeout: 1800            # 最低活跃频率（秒）：超过 30 分钟未发起请求将自动冻结
+      is-concurrent: false            # 是否允许同账号多地并发登录：false 代表顶替登录（新登录踢掉旧登录）
+      is-share: false                 # 在多人登录同一账号时，是否共享同一个 Token
+      token-style: "uuid"             # Token 风格：uuid / simple-uuid / random-32 / random-64 / tik
+      is-log: false                   # 是否在控制台输出 Sa-Token 内部操作日志
+
+    # 2. 终端用户体系 (User) 配置
+    user:
+      token-name: "AIO-USER-TOKEN"    # 用户端 Token 键名
+      timeout: 2592000                # 默认 30 天
+      active-timeout: -1              # -1 代表不限制活跃频率（只要未到期就保持登录态）
+      is-concurrent: true             # 允许同账号在手机端与平板同时登录
+      is-share: false
+      token-style: "uuid"
+      is-log: false
+
+    # 3. 终端设备体系 (Device) 配置
+    device:
+      token-name: "AIO-DEVICE-TOKEN"  # 设备端 Token 键名
+      timeout: -1                     # 设备 Token 永不过期
+      active-timeout: -1              # 不限制活跃频率
+      is-concurrent: true
+      is-share: true                  # 相同设备重复鉴权复用同一 Token
+      token-style: "random-64"        # 高强度随机字符
+      is-log: false
+
+  # -------------------------------------------------------------
+  # 文档导出套件组件配置 (Doc - 支持 HTML/Excel/Word/PDF)
+  # -------------------------------------------------------------
+  doc:
+    enabled: true                     # 是否启用文档导出组件（默认 true）
+    temp-dir: ""                      # 临时生成文件暂存目录（默认空，使用系统临时目录）
+    default-font: "SimSun"            # PDF/文档导出的默认中文字体名称（默认 SimSun 宋体）
+    cache-template: true              # 是否开启 HTML 模板引擎缓存（默认 true，生产建议开启，开发调试可设为 false）
+
+# Sa-Token 全局底层配置（按需可选）
+sa-token:
+  is-print: false                     # 是否在启动时打印 Sa-Token 字符画
+  token-style: uuid

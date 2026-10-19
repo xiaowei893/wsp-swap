@@ -1,0 +1,14 @@
+# -------------------------------------------------------------
+# 达梦数据库主数据源配置 (DM8 / DM7 - OLTP)
+# -------------------------------------------------------------
+spring:
+  datasource:
+    dynamic:
+      primary: dm_db
+      strict: false
+      datasource:
+        dm_db:
+          driver-class-name: dm.jdbc.driver.DmDriver
+          url: ${DM_URL:jdbc:dm://127.0.0.1:5236/WSP_SWAP?schema=WSP_SWAP&zeroDateTimeBehavior=round&logLevel=error}
+          username: ${DM_USER:SYSDBA}
+          password: ${DM_PASSWORD:SYSDBA}

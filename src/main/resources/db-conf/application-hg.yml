@@ -1,0 +1,14 @@
+# -------------------------------------------------------------
+# 瀚高数据库主数据源配置 (HighGo DB 安全版/企业版 - OLTP)
+# -------------------------------------------------------------
+spring:
+  datasource:
+    dynamic:
+      primary: highgo_db
+      strict: false
+      datasource:
+        highgo_db:
+          driver-class-name: com.highgo.jdbc.Driver
+          url: ${HIGHGO_URL:jdbc:highgo://127.0.0.1:5866/wsp_swap?currentSchema=public&stringtype=unspecified}
+          username: ${HIGHGO_USER:highgo}
+          password: ${HIGHGO_PASSWORD:Highgo@123}

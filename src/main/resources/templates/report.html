@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${reportTitle}">交换部署服务质量分析月报（前端原型预览）</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f7f9fa;
+            color: #333;
+            padding: 30px;
+        }
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            padding: 36px 40px;
+        }
+        .header {
+            border-bottom: 2px solid #1890ff;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+        }
+        .title {
+            color: #1890ff;
+            font-size: 26px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        .meta-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            font-size: 14px;
+            color: #666;
+        }
+        .meta-item strong {
+            color: #333;
+        }
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .card {
+            background-color: #f9fbfd;
+            border: 1px solid #e8ebee;
+            border-radius: 6px;
+            padding: 16px 20px;
+            text-align: center;
+        }
+        .card .card-label {
+            font-size: 13px;
+            color: #8c8c8c;
+            margin-bottom: 8px;
+        }
+        .card .card-value {
+            font-size: 22px;
+            font-weight: bold;
+            color: #1890ff;
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #262626;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+        }
+        .section-title::before {
+            content: "";
+            display: inline-block;
+            width: 4px;
+            height: 18px;
+            background-color: #1890ff;
+            margin-right: 8px;
+            border-radius: 2px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        th, td {
+            border: 1px solid #e8e8e8;
+            padding: 12px 16px;
+            text-align: left;
+        }
+        th {
+            background-color: #fafafa;
+            color: #262626;
+            font-weight: 600;
+        }
+        tr:nth-child(even) {
+            background-color: #fcfcfc;
+        }
+        tr:hover {
+            background-color: #f5f7fa;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .badge-success {
+            background-color: #e6f7ff;
+            color: #1890ff;
+            border: 1px solid #91d5ff;
+        }
+        .badge-warning {
+            background-color: #fffbe6;
+            color: #faad14;
+            border: 1px solid #ffe58f;
+        }
+        .footer {
+            margin-top: 30px;
+            border-top: 1px dashed #e8e8e8;
+            padding-top: 16px;
+            font-size: 12px;
+            color: #999;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title" th:text="${reportTitle}">2026年数据交换部署服务运行质量分析报告</h1>
+            <div class="meta-bar">
+                <div class="meta-item">所属系统：<strong th:text="${systemName}">AIO 一体化交换部署服务 (wsp-swap)</strong></div>
+                <div class="meta-item">制表部门：<strong th:text="${department}">智能数据中台架构部</strong></div>
+                <div class="meta-item">生成时间：<strong th:text="${createTime}">2026-10-16 16:30:00</strong></div>
+            </div>
+        </div>
+
+        <div class="summary-cards">
+            <div class="card">
+                <div class="card-label">总任务数量</div>
+                <div class="card-value" th:text="${totalTasks}">128</div>
+            </div>
+            <div class="card">
+                <div class="card-label">累计交换记录数</div>
+                <div class="card-value" th:text="${totalRecords}">12,450,890</div>
+            </div>
+            <div class="card">
+                <div class="card-label">平均同步延迟</div>
+                <div class="card-value" th:text="${avgLatency}">18.5 ms</div>
+            </div>
+        </div>
+
+        <div class="section-title">核心交换任务明细与运行状态</div>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 15%;">任务编码</th>
+                    <th style="width: 25%;">任务名称</th>
+                    <th style="width: 20%;">源端节点</th>
+                    <th style="width: 20%;">目标端节点</th>
+                    <th style="width: 10%;">状态</th>
+                    <th style="width: 10%;">成功率</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- th:each 动态遍历任务列表 -->
+                <tr th:each="task : ${taskList}">
+                    <td th:text="${task.taskCode}">TASK_001</td>
+                    <td th:text="${task.taskName}">内外网业务数据同步</td>
+                    <td th:text="${task.sourceNode}">NODE_INTERNAL_01</td>
+                    <td th:text="${task.targetNode}">NODE_EXTERNAL_01</td>
+                    <td>
+                        <span class="badge badge-success" th:text="${task.statusDesc}">运行中</span>
+                    </td>
+                    <td th:text="${task.successRate}">99.98%</td>
+                </tr>
+                <!-- 静态脱机预览占位行（仅在非后端渲染时可见） -->
+                <!--/*-->
+                <tr>
+                    <td>TASK_002</td>
+                    <td>财务结算日志归档</td>
+                    <td>FINANCE_DB</td>
+                    <td>CLICKHOUSE_OLAP</td>
+                    <td><span class="badge badge-success">运行中</span></td>
+                    <td>100.00%</td>
+                </tr>
+                <tr>
+                    <td>TASK_003</td>
+                    <td>安全设备遥测流转</td>
+                    <td>GATEWAY_EDGE</td>
+                    <td>KAFKA_CLUSTER</td>
+                    <td><span class="badge badge-warning">空闲</span></td>
+                    <td>99.85%</td>
+                </tr>
+                <!--*/-->
+            </tbody>
+        </table>
+
+        <div class="footer">
+            <p>本报告由 AIO Framework 响应式文档套件 (aio-spring-boot-starter-doc) 自动生成，数据仅供内部核算使用。</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,47 @@
+# -------------------------------------------------------------
+# Apache Kafka 消息队列配置 (Spring for Apache Kafka 4.1.0)
+# -------------------------------------------------------------
+spring:
+  kafka:
+    enabled: ${KAFKA_ENABLED:true}                     # 核心开关：true 激活 Kafka 自动配置
+    bootstrap-servers: ${KAFKA_SERVERS:192.168.50.50:9092} # Kafka 集群连接地址
+
+    # -------------------------------------------------------------
+    # 生产者生产级调优配置 (Producer)
+    # -------------------------------------------------------------
+    producer:
+      acks: all                               # 消息应答机制：all / -1（强一致性，所有 ISR 副本落盘）
+      retries: 3                              # 网络故障或 Leader 切换时的自动重试次数
+      enable-idempotence: true                # 开启生产者幂等性（Exactly-Once 保障，杜绝网络重试造成重复消息）
+      compression-type: lz4                   # 压缩算法：lz4（极大降低网络 I/O 与磁盘占用，提升吞吐）
+      linger-ms: 10                           # 微批延迟等待（毫秒）：聚合小消息成批次，降低网络 I/O 次数
+      batch-size: 16384                       # 批发送缓冲区大小（字节，默认 16KB）
+      buffer-memory: 33554432                 # 生产者总内存缓冲区（字节，默认 32MB）
+      max-in-flight-requests-per-connection: 5 # 单连接最大并发未确认请求数（开启幂等性时的推荐上限）
+
+    # -------------------------------------------------------------
+    # 消费者生产级调优配置 (Consumer)
+    # -------------------------------------------------------------
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:wsp-swap-group} # 消费者群组 ID
+      auto-offset-reset: latest               # 偏移量重置策略：latest（消费新消息）/ earliest
+      max-poll-records: 100                   # 单次拉取最大记录数（影响批量消费的 Batch 规模）
+      max-poll-interval-ms: 300000            # 单次拉取批处理最大耗时（毫秒，默认 5 分钟），防超时误触发 Rebalance
+      session-timeout-ms: 30000               # 心跳会话超时时间（毫秒，默认 30 秒）
+      request-timeout-ms: 45000               # 请求 Broker 超时时间（毫秒，默认 45 秒）
+      partition-assignment-strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor # 协同粘性分配器（增量 Rebalance，消除 STW）
+      concurrency: 3                          # 监听容器并发消费线程数（根据 Topic 分区数调整）
+      poll-timeout: 3000                      # poll 拉取阻塞等待超时（毫秒）
+      shutdown-timeout: 10000                 # 优雅停机等待超时（毫秒，保障发布时不丢消息）
+      enable-dlt: false                       # 是否启用死信队列机制（重试失败自动转入 <topic>.DLT 主题）
+      retry-count: 3                          # 消费业务异常重试次数
+      retry-interval-ms: 2000                 # 消费业务异常重试间隔时间（毫秒）
+
+    # -------------------------------------------------------------
+    # 安全与认证配置 (SASL)
+    # -------------------------------------------------------------
+    properties:
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_PLAINTEXT}       # 安全协议（如 SASL_PLAINTEXT 或 SASL_SSL）
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:SCRAM-SHA-256}             # 认证机制（支持 SCRAM-SHA-256 / PLAIN 等）
+      username: ${KAFKA_USERNAME:admin}                             # 认证用户名
+      password: ${KAFKA_PASSWORD:admin-sec}                         # 认证密码

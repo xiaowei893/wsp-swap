@@ -1,0 +1,14 @@
+# -------------------------------------------------------------
+# PostgreSQL 主数据源配置 (OLTP)
+# -------------------------------------------------------------
+spring:
+  datasource:
+    dynamic:
+      primary: pgsql_db
+      strict: false
+      datasource:
+        pgsql_db:
+          driver-class-name: org.postgresql.Driver
+          url: ${PGSQL_URL:jdbc:postgresql://127.0.0.1:5432/wsp_swap?currentSchema=public&reWriteBatchedInserts=true}
+          username: ${PGSQL_USER:postgres}
+          password: ${PGSQL_PASSWORD:postgres}
