@@ -16,7 +16,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <!-- 框架版本统一管控 -->
-        <aio-framework.version>1.0.15</aio-framework.version>
+        <aio-framework.version>1.0.17</aio-framework.version>
         <!-- 打包时跳过测试阶段（极速打包，避免本地/流水线因数据库未连接而中断） -->
         <skipTests>true</skipTests>
     </properties>
