@@ -10,11 +10,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.springframework.kafka.support.SendResult;
-import org.springframework.web.bind.annotation.*;
-import reactor.core.publisher.Mono;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Kafka 消息队列演示控制器
@@ -63,7 +66,7 @@ public class KafkaDemoController {
 
     @PostMapping("/send-async")
     @Operation(summary = "2. 异步高吞吐发送 (CompletableFuture 回调)", description = "异步投递消息至生产者内存缓冲区，借助 CompletableFuture 非阻塞返回")
-    public Mono<ResultBody<Map<String, Object>>> sendAsync(
+    public CompletableFuture<ResultBody<Map<String, Object>>> sendAsync(
             @Parameter(description = "业务任务编码", example = "TASK_002")
             @RequestParam(defaultValue = "TASK_002") String taskCode,
             @Parameter(description = "事件类型", example = "DATA_STREAM_PUSH")
@@ -79,8 +82,8 @@ public class KafkaDemoController {
                 .timestamp(LocalDateTime.now())
                 .build();
 
-        return Mono.fromFuture(kafkaProducerService.sendAsync(message))
-                .map(sendResult -> {
+        return kafkaProducerService.sendAsync(message)
+                .thenApply(sendResult -> {
                     RecordMetadata metadata = sendResult.getRecordMetadata();
                     Map<String, Object> data = new LinkedHashMap<>();
                     data.put("msgId", message.getMsgId());

@@ -18,7 +18,7 @@ class WspSwapApplicationTests {
     private SwapKafkaProducerService kafkaProducerService;
 
     @Autowired(required = false)
-    private org.springframework.web.cors.reactive.CorsWebFilter corsWebFilter;
+    private org.springframework.web.filter.CorsFilter corsFilter;
 
     @Autowired(required = false)
     private org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
@@ -37,8 +37,8 @@ class WspSwapApplicationTests {
     }
 
     @Test
-    void testCorsWebFilterLoaded() {
-        Assertions.assertNotNull(corsWebFilter, "AIO 跨域过滤器 CorsWebFilter 应当由 aio-spring-boot-starter-common 自动配置成功装配");
+    void testCorsFilterLoaded() {
+        Assertions.assertNotNull(corsFilter, "AIO 跨域过滤器 CorsFilter 应当由 aio-spring-boot-starter-common 自动配置成功装配");
     }
 
     @Test

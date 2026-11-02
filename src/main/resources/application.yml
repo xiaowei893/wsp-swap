@@ -1,5 +1,7 @@
 server:
   port: 9980
+  servlet:
+    context-path: /swap
 spring:
   application:
     name: wsp-swap
@@ -14,23 +16,86 @@ spring:
       - optional:db-conf/application-${DB_TYPE:mysql}.yml
       # 4. 消息队列组件
       - application-kafka.yml
-  webflux:
-    base-path: /swap
-  # WebFlux 编解码器全局缓冲区限制（解决文件上传与请求体默认 256KB 截断限制）
-  codec:
-    max-in-memory-size: 50MB
+  # 启用 Java 21 虚拟线程 (Virtual Threads)
+  threads:
+    virtual:
+      enabled: true
+  # -------------------------------------------------------------
+  # 1. Spring MVC 原生上传限制与磁盘缓冲规约（必须配置）
+  # -------------------------------------------------------------
+  servlet:
+    multipart:
+      enabled: true                   # 启用 Spring MVC Multipart 上传支持
+      max-file-size: 50MB             # 单个文件最大大小（原 max-file-size）
+      max-request-size: 100MB         # 单次请求总大小（建议设为单个文件的 2 倍）
+      file-size-threshold: 2MB        # 内存缓冲阈值（原 max-in-memory-size，超出写入临时磁盘防 OOM）
   profiles:
     # 全局激活环境：dev 开发环境，prod 生产环境
     active: dev
 
-# -------------------------------------------------------------
-# 商用密码机配置 (HSM)
-# -------------------------------------------------------------
-hsm:
-  vendor: "custom" # 必填！密码机厂家：custom（自定义/软实现）、yuweng（渔翁）、yisuo（一所）
+# ===================================================================
+# 1. 密码资源池与国密组件配置 (aio-spring-boot-starter-crypto)
+# ===================================================================
+gm:
+  # 全局默认激活密码厂商：custom (软国密), fisec (渔翁), gays (公安一所)
+  default-pwd-factory: custom
+
+# ===================================================================
+# 2. 行为验证码组件原生配置 (aio-spring-boot-starter-captcha)
+# ===================================================================
+captcha:
+  init-default-resource: true  # 启动时自动加载内置的精美滑块、旋转背景与缺口模板
+  local-cache-enabled: true    # 启用天爱内置切图一级预热缓存（微秒级极速响应）
+  local-cache-size: 50         # 切图预热池大小
+  expire:
+    default: 120000            # 验证码挑战时效：2分钟 (120,000 ms)
+
+# ===================================================================
+# 3. 统一文件存储组件配置 (aio-spring-boot-starter-storage & file-storage-sdk)
+# ===================================================================
+file:
+  storage:
+    mode: standalone              # 部署模式：单机 (standalone) / 多节点集群 (cluster)
+    type: local                   # 默认激活存储类型：local (本地磁盘)；切换对象存储需配置为 minio 或 aliyun
+    # -------------------------------------------------------------
+    # 3.1 本地磁盘存储提供者 (Local) - 当前默认启用
+    # -------------------------------------------------------------
+    local:
+      upload-path: ./data/storage/upload   # 本地持久化主存储目录（严禁 /tmp 默认兜底路径）
+      temp-path: ./data/storage/temp       # 本地临时分片暂存目录
+    # -------------------------------------------------------------
+    # 3.2 MinIO 私有化对象存储提供者 (默认关闭)
+    # 启用方式：enabled 设为 true，且将 file.storage.type 设为 minio (集群环境需将 mode 改为 cluster)
+    # -------------------------------------------------------------
+    minio:
+      enabled: false              # 是否启用 MinIO 存储（当前状态：关闭）
+      endpoint: ${MINIO_ENDPOINT:http://127.0.0.1:9000}       # MinIO 服务端 API 地址
+      access-key: ${MINIO_ACCESS_KEY:admin}                   # Access Key
+      secret-key: ${MINIO_SECRET_KEY:admin123}                # Secret Key
+      bucket-name: ${MINIO_BUCKET:wsp-swap}                   # 默认存储桶名称
+      auto-create-bucket: true    # 存储桶不存在时是否自动创建
+      temp-prefix: temp/          # 分片临时目录前缀
+    # -------------------------------------------------------------
+    # 3.3 阿里云 OSS 对象存储提供者 (默认关闭)
+    # 启用方式：enabled 设为 true，且将 file.storage.type 设为 aliyun
+    # -------------------------------------------------------------
+    aliyun:
+      enabled: false              # 是否启用阿里云 OSS 存储（当前状态：关闭）
+      endpoint: ${OSS_ENDPOINT:https://oss-cn-hangzhou.aliyuncs.com} # 地域节点 Endpoint
+      access-key-id: ${OSS_ACCESS_KEY_ID:your-access-key-id}         # 访问密钥 AccessKey ID
+      access-key-secret: ${OSS_ACCESS_KEY_SECRET:your-access-key-secret} # 访问密钥 AccessKey Secret
+      bucket-name: ${OSS_BUCKET:wsp-swap}                            # 存储空间 Bucket 名称
+      auto-create-bucket: false   # 存储空间不存在时是否自动创建
+    # -------------------------------------------------------------
+    # 3.4 大文件分片上传公共配置
+    # -------------------------------------------------------------
+    multipart:
+      enabled: true               # 启用大文件分片上传
+      temp-expire-hours: 24       # 分片临时任务过期清理时长 (小时)
+
 aio:
   # -------------------------------------------------------------
-  # 跨域资源共享配置 (CORS - 遵循 AIO Framework WebFlux 响应式规约)
+  # 跨域资源共享配置 (CORS - 遵循 AIO Framework Spring MVC 规约)
   # -------------------------------------------------------------
   cors:
     enabled: true                     # 是否启用跨域过滤器（默认 true）
@@ -42,7 +107,7 @@ aio:
     max-age: 1800                    # 预检缓存时长（秒）
 
   # -------------------------------------------------------------
-  # 响应式链路追踪 (Trace - 遵循 AIO Framework Trace 规约)
+  # 链路追踪 (Trace - 遵循 AIO Framework Trace 规约)
   # -------------------------------------------------------------
   trace:
     enabled: true                     # 是否启用链路追踪（默认 true）
@@ -69,14 +134,13 @@ aio:
         - "/webjars/**"
 
   # -------------------------------------------------------------
-  # 文件上传限制配置 (Upload - 响应式大文件与磁盘缓冲规约)
+  # 2. AIO 存储扩展安全规约（按需保留）
   # -------------------------------------------------------------
-  upload:
-    enabled: true
-    max-parts: 10                     # 单次最多允许上传的 Part 数量
-    max-file-size: 50MB               # 单个文件最大大小
-    max-disk-usage-per-part: 100MB    # 单 Part 最大磁盘暂存容量
-    max-in-memory-size: 2MB           # 内存缓冲阈值，超出写入临时磁盘文件，避免堆内存 OOM
+  storage:
+    enabled: true                     # 启用 AIO 存储服务门面
+    fail-fast: true                   # 开启启动期与运行期强阻断校验
+    max-biz-path-length: 256          # 业务存储路径最大长度限制
+    max-filename-length: 256          # 文件名最大长度限制
 
   # -------------------------------------------------------------
   # 持久层与多数据源配置
@@ -92,7 +156,52 @@ aio:
     migration-location: db-sql
 
   # -------------------------------------------------------------
-  # Sa-Token 响应式多账号认证体系配置 (WebFlux Reactor)
+  # 行为验证码套件高级扩展配置 (Captcha)
+  # -------------------------------------------------------------
+  captcha:
+    enabled: true                     # 是否启用验证码组件（默认 true）
+    storage-type: AUTO                # 存储类型：AUTO (自动探测)、REDIS、CAFFEINE
+    register-controller: true         # 是否自动注册通用端点 /api/v1/captcha/*（默认 true）
+    secondary-expire: 2m              # 二次校验凭证有效时长（默认 2 分钟）
+    secondary-key-prefix: "aio:captcha:secondary:" # 二次校验凭证在 Redis/Caffeine 中的 Key 前缀
+    local-cache-maximum-size: 100000  # 本地 Caffeine 缓存最大条目上限（防 OOM）
+    header-name: "captcha-token"      # @CheckCaptcha 在 HTTP 请求头中提取凭证的 Key 名
+    param-name: "captchaToken"        # @CheckCaptcha 在 HTTP 查询参数中提取凭证的 Key 名
+
+  # -------------------------------------------------------------
+  # 国密加解密与防篡改组件微调配置 (Crypto)
+  # -------------------------------------------------------------
+  crypto:
+    read:
+      parallel-enabled: true          # 前台查询集合并发解密（默认 true）
+      parallel-threshold: 5           # 触发并发解密的最小集合大小（默认 5）
+    write:
+      parallel-enabled: true          # 批量写入并发加密与签名（默认 true）
+      parallel-threshold: 5           # 触发批量并发加密的最小元素数（默认 5）
+    integrity:
+      enabled: true                   # 是否开启定时防篡改巡检（默认 true）
+      cron: "0 */30 * * * ?"          # 定时巡检 Cron 表达式（默认每 30 分钟一次）
+      parallel-enabled: true          # 是否启用批次数据并发验签加速（默认 true）
+      page-size: 500                  # 单批次游标分页大小（默认 500）
+    init:
+      enabled: true                   # 微服务启动时自动执行凭证初始化与配置表自建（默认 true）
+
+  # -------------------------------------------------------------
+  # 统一多级缓存配置 (L1 本地 Caffeine + L2 远程 Redis)
+  # -------------------------------------------------------------
+  cache:
+    enabled: true                             # 是否启用统一多级缓存，默认 true
+    broadcast-channel: "aio:cache:evict:topic" # 集群本地缓存失效广播通道
+    local:
+      initial-capacity: 256                   # Caffeine 初始容量
+      maximum-size: 10000                     # 单命名空间最大条目数
+      default-expire: 5m                      # 本地缓存全局默认过期时间
+    remote:
+      default-expire: 1h                      # 远程 Redis 缓存全局默认过期时间
+      null-value-expire: 60s                  # 防穿透空值缓存过期时间
+
+  # -------------------------------------------------------------
+  # Sa-Token 多账号认证体系配置 (Spring MVC)
   # -------------------------------------------------------------
   sa-token:
     # 1. 管理员账号体系 (Admin) 配置

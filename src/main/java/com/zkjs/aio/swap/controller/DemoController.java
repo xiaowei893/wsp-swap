@@ -9,26 +9,20 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * 交换部署服务示例控制器
+ * 交换部署服务示例控制器（Spring MVC 体系）
  *
  * @author wuyw
  */
 @Slf4j
 @RestController
 @RequestMapping("/demo")
-@Tag(name = "演示接口", description = "用于展示 WebFlux 响应式接口、Knife4j 文档标注以及全局响应封装规范")
+@Tag(name = "演示接口", description = "用于展示 Spring MVC 接口、Knife4j 文档标注以及全局响应封装规范")
 public class DemoController {
 
     /**
@@ -60,23 +54,21 @@ public class DemoController {
     }
 
     /**
-     * 3. WebFlux 响应式异步接口示例 (Mono)
+     * 3. 异步数据处理接口示例
      */
-    @GetMapping("/reactive")
-    @Operation(summary = "响应式异步接口 (WebFlux Mono 示例)", description = "演示返回 Reactor 的 Mono 响应式数据流")
-    public Mono<ResultBody<DemoResponse>> reactiveDemo(
+    @GetMapping({"/async", "/reactive"})
+    @Operation(summary = "数据处理接口 (异步/虚拟线程示例)", description = "演示在 Spring MVC + 虚拟线程下的数据处理")
+    public ResultBody<DemoResponse> asyncDemo(
             @Parameter(description = "任务名称", example = "交换同步任务")
             @RequestParam(value = "taskName", defaultValue = "默认任务") String taskName) {
-        log.info("收到 reactive 请求，taskName: {}", taskName);
-        return Mono.fromCallable(() -> {
-            DemoResponse response = DemoResponse.builder()
-                    .traceId(UUID.randomUUID().toString().replace("-", ""))
-                    .name(taskName)
-                    .message("响应式异步流处理完毕")
-                    .timestamp(LocalDateTime.now())
-                    .build();
-            return ResultBody.success(response);
-        });
+        log.info("收到 demo 请求，taskName: {}", taskName);
+        DemoResponse response = DemoResponse.builder()
+                .traceId(UUID.randomUUID().toString().replace("-", ""))
+                .name(taskName)
+                .message("数据处理完毕")
+                .timestamp(LocalDateTime.now())
+                .build();
+        return ResultBody.success(response);
     }
 
     /**

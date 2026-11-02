@@ -16,7 +16,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <!-- 框架版本统一管控 -->
-        <aio-framework.version>1.0.17</aio-framework.version>
+        <aio-framework.version>1.1.2</aio-framework.version>
         <!-- 打包时跳过测试阶段（极速打包，避免本地/流水线因数据库未连接而中断） -->
         <skipTests>true</skipTests>
     </properties>
@@ -32,7 +32,7 @@
         </dependencies>
     </dependencyManagement>
     <dependencies>
-        <!-- 基础通用组件（包含 WebFlux、统一响应封装、Knife4j 接口文档等，必选） -->
+        <!-- 基础通用组件（包含 Spring MVC、统一响应封装、Knife4j 接口文档等，必选） -->
         <dependency>
             <groupId>com.zkjs.aio</groupId>
             <artifactId>aio-spring-boot-starter-common</artifactId>
@@ -74,11 +74,36 @@
             <groupId>com.zkjs.aio</groupId>
             <artifactId>aio-spring-boot-starter-kafka</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.zkjs.aio</groupId>
+            <artifactId>aio-spring-boot-starter-crypto</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.zkjs.aio</groupId>
+            <artifactId>aio-spring-boot-starter-captcha</artifactId>
+        </dependency>
+
+        <!-- 统一文件存储组件：基于 file-storage-sdk 的企业级存储门面与安全机制 -->
+        <dependency>
+            <groupId>com.zkjs.aio</groupId>
+            <artifactId>aio-spring-boot-starter-storage</artifactId>
+        </dependency>
+        <!-- 本地磁盘存储实现提供者（单机开发与测试环境） -->
+        <dependency>
+            <groupId>com.zkjs.storage</groupId>
+            <artifactId>file-storage-local</artifactId>
+        </dependency>
 
         <!-- 文档导出套件组件：HTML(Thymeleaf)、Excel(EasyExcel)、Word(Poi-tl)、PDF(x-easypdf) -->
         <dependency>
             <groupId>com.zkjs.aio</groupId>
             <artifactId>aio-spring-boot-starter-doc</artifactId>
+        </dependency>
+        <!-- 解决 x-easypdf-shade-pdfbox 中 SPI 遗留对 jbig2-imageio 缺失引致 ImageIO 初始化异常 -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>jbig2-imageio</artifactId>
+            <version>3.0.4</version>
         </dependency>
 
         <!-- 单元测试组件：JUnit 5 与 Spring Boot Test -->

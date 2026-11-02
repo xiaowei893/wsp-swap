@@ -1,12 +1,16 @@
 package com.zkjs.aio.swap.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zkjs.aio.cache.util.RedisUtil;
 import com.zkjs.aio.common.vo.ResultBody;
-import com.zkjs.aio.swap.crypto.enums.CryptoMode;
-import com.zkjs.aio.swap.crypto.enums.HsmVendor;
-import com.zkjs.aio.swap.crypto.factory.HsmCryptoDispatcher;
-import com.zkjs.aio.swap.crypto.migration.HsmDataMigrationService;
+import com.zkjs.aio.crypto.core.CryptoDispatcher;
+import com.zkjs.aio.crypto.core.VendorMapper;
+import com.zkjs.aio.crypto.enums.CryptoMode;
+import com.zkjs.aio.crypto.migration.CryptoDataMigrationService;
+import com.zkjs.aio.crypto.task.GenericIntegrityCheckTask;
 import com.zkjs.aio.swap.entity.SwapTask;
 import com.zkjs.aio.swap.service.SwapTaskService;
+import com.zkjs.gm.pool.enums.PwdFactory;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,7 +26,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 密码机加解密与平滑重密功能测试控制器
+ * 国密加解密、防篡改签名与平滑重密功能测试控制器
+ * 基于 aio-spring-boot-starter-crypto 官方组件
  *
  * @author wuyw
  */
@@ -30,32 +35,33 @@ import java.util.Map;
 @RestController
 @RequestMapping("/crypto/test")
 @RequiredArgsConstructor
-@Tag(name = "密码机加解密测试接口", description = "用于在线验证透明加解密、DB物理存储密文比对与厂商热切换平滑重密")
+@Tag(name = "国密加解密与防篡改测试接口", description = "用于在线验证透明加解密、DB物理存储密文比对与厂商热切换平滑重密")
 public class HsmCryptoTestController {
 
-    @Value("${hsm.vendor:}")
+    @Value("${gm.default-pwd-factory:custom}")
     private String configVendor;
 
-    private final HsmCryptoDispatcher dispatcher;
+    private final CryptoDispatcher cryptoDispatcher;
     private final SwapTaskService swapTaskService;
     private final JdbcTemplate jdbcTemplate;
-    private final HsmDataMigrationService migrationService;
-    private final com.zkjs.aio.swap.crypto.task.IntegrityCheckScheduledTask integrityCheckTask;
+    private final CryptoDataMigrationService migrationService;
+    private final GenericIntegrityCheckTask integrityCheckTask;
 
     /**
      * 1. 查询当前系统密码机配置状态
      */
     @GetMapping("/info")
-    @Operation(summary = "查询当前密码机系统状态", description = "返回 application.yml 配置厂商、数据库配置表厂商及 Redis 激活厂商")
+    @Operation(summary = "查询当前密码机系统状态", description = "返回 application.yml 配置厂商、数据库官方配置表 sys_gm_config 厂商及 Redis 激活厂商")
     public ResultBody<Map<String, Object>> getHsmInfo() {
         Map<String, Object> info = new HashMap<>();
         info.put("configVendorInYml", configVendor);
-        info.put("activeVendorInRedis", dispatcher.getActiveVendor().getCode());
+        info.put("defaultFactory", cryptoDispatcher.getDefaultFactory().name());
+        info.put("activeFactoryInRuntime", cryptoDispatcher.getActiveFactory().name());
 
         String dbVendor = "未配置";
         try {
             List<String> list = jdbcTemplate.query(
-                    "SELECT config_value FROM sys_hsm_config WHERE config_key = 'active_vendor'",
+                    "SELECT config_value FROM sys_gm_config WHERE config_key = 'DEFAULT_PWD_FACTORY'",
                     (rs, rowNum) -> rs.getString("config_value")
             );
             if (!list.isEmpty()) {
@@ -64,7 +70,7 @@ public class HsmCryptoTestController {
         } catch (Exception e) {
             dbVendor = "查询失败: " + e.getMessage();
         }
-        info.put("dbVendorInTable", dbVendor);
+        info.put("dbVendorInSysGmConfig", dbVendor);
         return ResultBody.success("获取密码机状态成功", info);
     }
 
@@ -76,15 +82,15 @@ public class HsmCryptoTestController {
     @PostMapping("/task")
     @Operation(summary = "创建交换任务（测试写入加密与底表物理密文比对）", description = "传入明文入库，MyBatis 写入拦截器自动透明加密落盘并还原内存实体为明文，Controller 零还原代码")
     public ResultBody<Map<String, Object>> createEncryptedTask(
-            @Parameter(description = "任务名称（整段加密测试）", example = "核心涉密同步任务")
+            @Parameter(description = "任务名称（整段 SM4 加密测试）", example = "核心涉密同步任务")
             @RequestParam(defaultValue = "核心涉密同步任务") String taskName,
-            @Parameter(description = "源端节点（逐字符拆分加密测试）", example = "NODE_01")
+            @Parameter(description = "源端节点（逐字符拆分 SM4 加密测试）", example = "NODE_01")
             @RequestParam(defaultValue = "NODE_01") String sourceNode) {
 
         try {
             String taskCode = "TASK_" + System.currentTimeMillis();
             // 1. 直接通过 MyBatis-Plus 保存实体
-            // 【拦截器保障】：写入拦截器（MybatisCryptoWriteInterceptor）在落库时透明加密并注入 encipher_tag；
+            // 【拦截器保障】：写入拦截器在落库时透明加密并注入 encipher_tag；
             // 入库完成后，拦截器在 finally 块中立即将实体属性还原为明文原文，Controller 拿到的天然就是明文对象！
             SwapTask createdTask = swapTaskService.createTask(taskCode, taskName, sourceNode, "TARGET_99");
 
@@ -147,7 +153,6 @@ public class HsmCryptoTestController {
         }
 
         // 2. MyBatis-Plus 查询（由读取拦截器 MybatisCryptoReadInterceptor 自动透明解密还原原文）
-        // Controller 层无需任何解密代码，拿到的就是干净的明文实体！
         SwapTask task = swapTaskService.getById(targetId);
 
         Map<String, Object> safeDbRow = new HashMap<>(rows.get(0));
@@ -168,37 +173,38 @@ public class HsmCryptoTestController {
      * 4. 在线模拟厂商平滑重密迁移
      */
     @PostMapping("/switch-vendor")
-    @Operation(summary = "模拟热切换密码机厂商并执行数据平滑重密", description = "在线将历史数据重密为新厂商密文，并同步更新 DB 与 Redis")
+    @Operation(summary = "模拟热切换密码机厂商并执行数据平滑重密", description = "在线将历史数据重密为新厂商密文，并同步更新 Redis 全局热切换")
     public ResultBody<Map<String, Object>> switchVendor(
-            @Parameter(description = "目标新厂商编码: custom / yuweng / yisuo", example = "yuweng")
+            @Parameter(description = "目标新厂商编码: custom / fisec / gays", example = "fisec")
             @RequestParam String targetVendor) {
 
-        HsmVendor newVendor = HsmVendor.of(targetVendor);
-        HsmVendor oldVendor = dispatcher.getActiveVendor();
+        PwdFactory newVendor = VendorMapper.toPwdFactory(targetVendor);
+        PwdFactory oldVendor = cryptoDispatcher.getActiveFactory();
 
         if (newVendor == oldVendor) {
             return ResultBody.success("当前系统已激活厂商 [" + targetVendor + "]，无需执行重密迁移。", Collections.emptyMap());
         }
 
-        log.info("[HSM Test] 收到在线切换厂商请求: {} -> {}", oldVendor.getCode(), newVendor.getCode());
+        log.info("[HSM Test] 收到在线切换厂商请求: {} -> {}", oldVendor.name(), newVendor.name());
 
         try {
             // 1. 触发平滑数据重密清洗引擎
-            migrationService.executeFullMigration(oldVendor, newVendor);
+            int migratedCount = migrationService.migrateTable(SwapTask.class, newVendor);
 
-            // 2. 更新数据库与 Redis
-            jdbcTemplate.update("UPDATE sys_hsm_config SET config_value = ? WHERE config_key = 'active_vendor'", newVendor.getCode());
-            dispatcher.setActiveVendorCache(newVendor);
+            // 2. 写入全局 Redis 热切换键
+            String code = VendorMapper.toStandardCode(newVendor);
+            RedisUtil.set(CryptoDispatcher.ACTIVE_VENDOR_REDIS_KEY, code);
 
             // 3. 统计并抽样一条数据展示重密后的真实密文
             List<Map<String, Object>> sample = jdbcTemplate.queryForList(
-                    "SELECT id, task_name, source_node, encipher_tag FROM swap_task ORDER BY id DESC LIMIT 1"
+                    "SELECT id, task_name, source_node, encipher_tag, sign_value FROM swap_task ORDER BY id DESC LIMIT 1"
             );
 
             Map<String, Object> res = new HashMap<>();
-            res.put("oldVendor", oldVendor.getCode());
-            res.put("newVendor", newVendor.getCode());
-            res.put("message", "全量平滑重密完成");
+            res.put("oldVendor", oldVendor.name());
+            res.put("newVendor", newVendor.name());
+            res.put("migratedRowsCount", migratedCount);
+            res.put("message", "单表平滑重密完成");
             res.put("latestRowRawDbCipherAfterMigration(重密后最新行底表密文与标签)", sample.isEmpty() ? null : sample.get(0));
 
             return ResultBody.success("厂商平滑重密执行成功", res);
@@ -218,16 +224,16 @@ public class HsmCryptoTestController {
             @RequestParam(defaultValue = "custom") String vendor,
             @RequestParam(defaultValue = "0") Integer mode) {
 
-        HsmVendor v = HsmVendor.of(vendor);
-        CryptoMode m = CryptoMode.of(mode);
+        PwdFactory v = VendorMapper.toPwdFactory(vendor);
+        CryptoMode m = mode == 1 ? CryptoMode.CHAR_BY_CHAR : CryptoMode.FULL;
 
-        String cipher = dispatcher.encrypt(text, v, m);
-        String decrypted = dispatcher.decrypt(cipher, v, m);
+        String cipher = cryptoDispatcher.encrypt(text, v, m);
+        String decrypted = cryptoDispatcher.decrypt(cipher, v, m);
 
         Map<String, Object> map = new HashMap<>();
         map.put("plainText", text);
-        map.put("vendor", v.getCode());
-        map.put("mode", m.getMode() == 0 ? "0-整段加密" : "1-逐字符加密");
+        map.put("vendor", v.name());
+        map.put("mode", m == CryptoMode.FULL ? "0-整段加密 (FULL)" : "1-逐字符拆分加密 (CHAR_BY_CHAR)");
         map.put("rawCipher", cipher);
         map.put("decryptedText", decrypted);
         map.put("isMatch", text.equals(decrypted));
@@ -244,8 +250,8 @@ public class HsmCryptoTestController {
             @Parameter(description = "明文检索关键字（如: NODE 或 01）", example = "NODE")
             @RequestParam(defaultValue = "NODE") String keyword) {
 
-        // 1. 将明文关键字按当前激活厂商的模式 1（逐字符加密）加密为纯 Hex 密文片段
-        String keywordCipher = dispatcher.encrypt(keyword, CryptoMode.CHAR_BY_CHAR);
+        // 1. 将明文关键字按当前激活厂商的模式 1（逐字符拆分加密）加密为纯 Hex 密文片段
+        String keywordCipher = cryptoDispatcher.encrypt(keyword, CryptoMode.CHAR_BY_CHAR);
 
         // 2. 原生 SQL 执行密文模糊检索
         List<Map<String, Object>> rawRows = jdbcTemplate.queryForList(
@@ -255,9 +261,9 @@ public class HsmCryptoTestController {
 
         // 3. 经过 MyBatis-Plus 查询自动还原明文
         List<SwapTask> decryptedTasks = swapTaskService.list(
-                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SwapTask>()
-                        .like("source_node", keywordCipher)
-                        .orderByDesc("id")
+                new LambdaQueryWrapper<SwapTask>()
+                        .like(SwapTask::getSourceNode, keywordCipher)
+                        .orderByDesc(SwapTask::getId)
         );
 
         Map<String, Object> res = new HashMap<>();
@@ -277,8 +283,6 @@ public class HsmCryptoTestController {
     @GetMapping("/standard/{id}")
     @Operation(summary = "标准业务按 ID 查询（Controller 零解密代码）", description = "演示常规业务 Controller 写法：直接调用 Service 查询并返回，读取拦截器全自动将密文解密还原为原文")
     public ResultBody<SwapTask> getStandardTaskById(@PathVariable("id") Long id) {
-        // Controller 只需要像普通未加密项目一样直接调用 getById
-        // 底层 ResultSetHandler 拦截器自动根据 encipher_tag 将密文字段精准解密还原为原文
         SwapTask task = swapTaskService.getById(id);
         if (task == null) {
             return ResultBody.failure("未找到 ID 为 " + id + " 的任务");
@@ -288,7 +292,7 @@ public class HsmCryptoTestController {
 
     /**
      * 8. 修改任务（测试更新时签名重算与防篡改阻断）
-     * 若当前数据已被篡改 (data_tampered=2)，拦截器直接抛出 BusinessException 阻断更新！
+     * 若当前数据已被篡改 (data_tampered=2)，拦截器直接抛出 DataTamperedException 阻断更新！
      */
     @PutMapping("/task/{id}")
     @Operation(summary = "修改交换任务（测试防篡改阻断与签名重算）", description = "若记录已被篡改 (data_tampered=2) 则阻断更新并提示用户；正常记录则自动重新按当前厂商算法计算签名")
@@ -306,8 +310,7 @@ public class HsmCryptoTestController {
         task.setSourceNode(sourceNode);
 
         // 执行更新：触发写入拦截器
-        // 写入拦截器自动检查当前 DB 中的 data_tampered 状态，若等于 2 则直接抛出 BusinessException 阻断更新！
-        // 被 MyBatis 包装后由底层框架 GlobalExceptionHandler 自动穿透解包，并以 ResultBody 友好格式返回前端！
+        // 写入拦截器自动检查当前 DB 中的 data_tampered 状态，若等于 2 则直接抛出 DataTamperedException 强行阻断！
         swapTaskService.updateById(task);
         return ResultBody.success("任务更新成功（已重新生成防篡改签名）", task);
     }
@@ -317,8 +320,8 @@ public class HsmCryptoTestController {
      */
     @PostMapping("/integrity/check")
     @Operation(summary = "手动触发后台数据完整性巡检", description = "使用当前激活密码厂商的算法全量校验数据签名，匹配更新为 1(正常)，篡改更新为 2(已篡改)")
-    public ResultBody<com.zkjs.aio.swap.crypto.task.IntegrityCheckScheduledTask.IntegrityCheckResult> triggerIntegrityCheck() {
-        var result = integrityCheckTask.executeCheck();
+    public ResultBody<List<GenericIntegrityCheckTask.IntegrityReport>> triggerIntegrityCheck() {
+        List<GenericIntegrityCheckTask.IntegrityReport> result = integrityCheckTask.executeAll();
         return ResultBody.success("完整性巡检执行完毕", result);
     }
 

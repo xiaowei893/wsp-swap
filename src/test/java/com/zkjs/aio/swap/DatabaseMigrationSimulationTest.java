@@ -5,17 +5,14 @@ import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.DynamicDataSour
 import com.zkjs.aio.mybatisplus.config.AioDatasourceProperties;
 import com.zkjs.aio.mybatisplus.migration.constant.DbSqlConstants;
 import com.zkjs.aio.mybatisplus.migration.core.DatabaseMigrationRunner;
-import com.zkjs.aio.mybatisplus.migration.enums.MigrationDialect;
 import com.zkjs.aio.mybatisplus.migration.exception.MigrationChecksumMismatchException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.sql.*;
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;

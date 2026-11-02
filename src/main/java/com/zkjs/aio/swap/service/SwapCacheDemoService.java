@@ -1,45 +1,42 @@
 package com.zkjs.aio.swap.service;
 
 import com.baomidou.lock.annotation.Lock4j;
-import com.zkjs.aio.cache.util.ReactiveRedisUtil;
+import com.zkjs.aio.cache.annotation.AioCache;
+import com.zkjs.aio.cache.annotation.AioCacheEvict;
+import com.zkjs.aio.cache.annotation.AioCachePut;
+import com.zkjs.aio.cache.enums.CacheType;
 import com.zkjs.aio.cache.util.RedisUtil;
+import com.zkjs.aio.swap.entity.SwapTask;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.Optional;
 
 /**
- * 缓存与分布式锁示例服务 (Redis 单机模式)
+ * 缓存与分布式锁示例服务
  * 遵循 AIO Framework 规约：
  * 1. aio.redis.key-prefix 全局前缀隔离 (wsp-swap)
- * 2. 支持 ReactiveRedisUtil 响应式操作与 RedisUtil 同步操作
+ * 2. 支持 RedisUtil 同步操作
  * 3. 支持 @Lock4j 分布式锁
+ * 4. 支持 @AioCache, @AioCachePut, @AioCacheEvict 统一多级缓存 (L1 Caffeine + L2 Redis)
  *
  * @author wuyw
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class SwapCacheDemoService {
 
-    /**
-     * 响应式存储缓存（底层自动加上 wsp-swap: 前缀）
-     */
-    public Mono<Boolean> setReactiveCache(String key, String value, long expireSeconds) {
-        log.info("响应式写入 Redis 缓存: key={}, value={}, expire={}s", key, value, expireSeconds);
-        return ReactiveRedisUtil.set(key, value, Duration.ofSeconds(expireSeconds));
-    }
+    @Lazy
+    private final SwapTaskService swapTaskService;
 
-    /**
-     * 响应式读取缓存
-     */
-    public Mono<String> getReactiveCache(String key) {
-        return ReactiveRedisUtil.get(key, String.class);
-    }
+    // =========================================================================
+    // 1. RedisUtil 同步操作
+    // =========================================================================
 
-    /**
-     * 同步模式写入与读取缓存 (RedisUtil)
-     */
     public void setSyncCache(String key, Object value, long expireSeconds) {
         RedisUtil.set(key, value, Duration.ofSeconds(expireSeconds));
     }
@@ -48,10 +45,10 @@ public class SwapCacheDemoService {
         return RedisUtil.get(key, clazz);
     }
 
-    /**
-     * Lock4j 注解式分布式锁演示
-     * 根据 taskCode 动态加锁，防止并发执行同一任务
-     */
+    // =========================================================================
+    // 3. Lock4j 分布式锁
+    // =========================================================================
+
     @Lock4j(keys = {"#taskCode"}, expire = 30000, acquireTimeout = 3000)
     public String executeTaskWithLock(String taskCode) {
         log.info("成功获取 Lock4j 分布式锁，开始执行交换任务: {}", taskCode);
@@ -63,5 +60,38 @@ public class SwapCacheDemoService {
         }
         log.info("交换任务执行完毕，即将自动释放锁: {}", taskCode);
         return "任务 [" + taskCode + "] 在分布式锁保护下执行成功";
+    }
+
+    // =========================================================================
+    // 4. @AioCache 统一多级缓存 (L1 Caffeine + L2 Redis + 集群广播驱逐)
+    // =========================================================================
+
+    /**
+     * 多级缓存读取与回源填充 (Cache-Aside)
+     * 优先查 L1 Caffeine；未命中查 L2 Redis 并回填 L1；均未命中查 DB 并同步写入 L1 和 L2
+     */
+    @AioCache(name = "swap_task", key = "#id", type = CacheType.BOTH, localExpire = 300, remoteExpire = 3600)
+    public Optional<SwapTask> getTaskMultiLevelCache(Long id) {
+        log.info("【多级缓存未命中，执行回源】从 MySQL 数据库查询任务: id={}", id);
+        return Optional.ofNullable(swapTaskService.getById(id));
+    }
+
+    /**
+     * 强制执行目标方法并回写刷新多级缓存 (@AioCachePut)
+     */
+    @AioCachePut(name = "swap_task", key = "#result.id", type = CacheType.BOTH)
+    public SwapTask updateTaskMultiLevelCache(SwapTask task) {
+        log.info("【多级缓存刷新】更新任务并强制同步回写 L1+L2 缓存: id={}", task.getId());
+        swapTaskService.updateById(task);
+        return task;
+    }
+
+    /**
+     * 驱逐多级缓存 (@AioCacheEvict)
+     * 当 type 为 BOTH 时，自动通过 Redis Pub/Sub 广播通知集群所有节点驱逐本地 Caffeine 缓存
+     */
+    @AioCacheEvict(name = "swap_task", key = "#id", type = CacheType.BOTH)
+    public void evictTaskMultiLevelCache(Long id) {
+        log.info("【多级缓存驱逐】清理任务 L1+L2 缓存并广播集群同步驱逐: id={}", id);
     }
 }

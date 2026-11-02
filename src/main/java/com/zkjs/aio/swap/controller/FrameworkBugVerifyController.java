@@ -5,9 +5,7 @@ import com.zkjs.aio.common.vo.ResultBody;
 import com.zkjs.aio.mybatisplus.config.AioDatasourceProperties;
 import com.zkjs.aio.mybatisplus.migration.constant.DbSqlConstants;
 import com.zkjs.aio.mybatisplus.migration.core.DatabaseMigrationRunner;
-import com.zkjs.aio.mybatisplus.migration.enums.DbProductType;
 import com.zkjs.aio.mybatisplus.migration.enums.MigrationDialect;
-import com.zkjs.aio.mybatisplus.migration.model.MigrationScript;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -17,7 +15,6 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.util.FileCopyUtils;
 import org.springframework.web.bind.annotation.*;
-import reactor.core.publisher.Mono;
 
 import javax.sql.DataSource;
 import java.io.InputStreamReader;
@@ -26,7 +23,10 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 框架核心功能与潜在 Bug 诊断验证控制器

@@ -3,9 +3,8 @@ package com.zkjs.aio.swap.entity;
 import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
-import com.zkjs.aio.swap.crypto.annotation.CryptoField;
-import com.zkjs.aio.swap.crypto.annotation.IntegrityField;
-import com.zkjs.aio.swap.crypto.enums.CryptoMode;
+import com.zkjs.aio.crypto.annotation.*;
+import com.zkjs.aio.crypto.enums.CryptoMode;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,6 +16,7 @@ import java.time.LocalDateTime;
 
 /**
  * 交换部署任务实体 (MySQL)
+ * 集成 aio-spring-boot-starter-crypto 国密透明加解密与防篡改统一组件
  *
  * @author wuyw
  */
@@ -41,7 +41,7 @@ public class SwapTask implements Serializable {
 
     @IntegrityField(order = 2)
     @CryptoField(mode = CryptoMode.FULL)
-    @Schema(description = "交换任务名称", example = "内外网业务同步任务")
+    @Schema(description = "交换任务名称（整段 SM4 加密）", example = "内外网业务同步任务")
     private String taskName;
 
     @Schema(description = "任务类型", example = "SYNC")
@@ -49,7 +49,7 @@ public class SwapTask implements Serializable {
 
     @IntegrityField(order = 3)
     @CryptoField(mode = CryptoMode.CHAR_BY_CHAR)
-    @Schema(description = "源端交换节点", example = "NODE_INTERNAL_01")
+    @Schema(description = "源端交换节点（逐字符拆分 SM4 加密，支持密文模糊检索）", example = "NODE_INTERNAL_01")
     private String sourceNode;
 
     @IntegrityField(order = 4)
@@ -63,16 +63,19 @@ public class SwapTask implements Serializable {
     @Schema(description = "备注说明", example = "日常同步")
     private String remark;
 
+    @EncipherTag
     @TableField(insertStrategy = FieldStrategy.ALWAYS, updateStrategy = FieldStrategy.ALWAYS)
-    @Schema(description = "加密标签（记录字段:算法:方式，如 taskName:custom:0|sourceNode:plaintext:0）", example = "taskName:custom:0|sourceNode:custom:1")
+    @Schema(description = "加密元数据标签（记录字段:厂商:方式，如 taskName:custom:0|sourceNode:custom:1）", example = "taskName:custom:0|sourceNode:custom:1")
     private String encipherTag;
 
+    @IntegritySign
     @TableField(value = "sign_value", insertStrategy = FieldStrategy.ALWAYS, updateStrategy = FieldStrategy.ALWAYS)
-    @Schema(description = "数据完整性签名值（由密码厂商 SM3/HMAC 计算）", example = "a1b2c3d4...")
+    @Schema(description = "数据完整性防篡改签名值（国密 SM3-HMAC 计算）", example = "a1b2c3d4...")
     private String signValue;
 
+    @IntegrityStatus
     @TableField(value = "data_tampered", insertStrategy = FieldStrategy.ALWAYS, updateStrategy = FieldStrategy.ALWAYS)
-    @Schema(description = "数据完整性防篡改状态：0-未检查，1-正常，2-篡改", example = "0")
+    @Schema(description = "数据完整性防篡改状态：0-未检查，1-正常，2-篡改锁定", example = "0")
     private Integer dataTampered;
 
     @Schema(description = "创建时间")

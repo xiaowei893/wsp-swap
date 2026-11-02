@@ -19,7 +19,7 @@ import java.util.List;
  */
 @Slf4j
 @Component
-@lombok.RequiredArgsConstructor
+@RequiredArgsConstructor
 public class SwapKafkaConsumer {
 
     private final ObjectMapper objectMapper;

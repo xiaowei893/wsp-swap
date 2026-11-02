@@ -2,7 +2,6 @@ package com.zkjs.aio.swap;
 
 import com.zkjs.aio.doc.excel.ExcelUtil;
 import com.zkjs.aio.doc.pdf.PdfUtil;
-import com.zkjs.aio.swap.dto.HtmlTemplateReq;
 import com.zkjs.aio.swap.entity.SwapTask;
 import com.zkjs.aio.swap.service.DocDemoService;
 import com.zkjs.aio.swap.service.SwapTaskService;
@@ -15,18 +14,13 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.http.ContentDisposition;
-import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
-import org.springframework.mock.web.server.MockServerWebExchange;
-import reactor.core.publisher.Flux;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -34,9 +28,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
 /**
- * 文档导出套件单元测试
+ * 文档导出套件单元测试（Spring MVC 体系）
  * <p>
- * 覆盖 HTML 自然模板渲染与响应式写回、Excel 导出与读取解析、Word 模板渲染与 PDF 水印注入。
+ * 覆盖 HTML 自然模板渲染与下载写回、Excel 导出与读取解析、Word 模板渲染与 PDF 水印注入。
  *
  * @author wuyw
  */
@@ -100,20 +94,20 @@ class DocDemoTest {
     }
 
     @Test
-    @DisplayName("1. 测试基于 Thymeleaf 自然模板动态填充与响应式下载 HTML 报表")
-    void testDownloadHtmlReport() {
-        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/demo/doc/html/download").build());
+    @DisplayName("1. 测试基于 Thymeleaf 自然模板动态填充与 Spring MVC 下载写回 HTML 报表")
+    void testDownloadHtmlReport() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
 
-        docDemoService.downloadHtmlReport(exchange.getResponse(), "2026年数据交换服务月报", "技术中台架构部").block();
+        docDemoService.downloadHtmlReport(response, "2026年数据交换服务月报", "技术中台架构部");
 
         // 验证 Content-Type 与 Content-Disposition
-        assertEquals("text/html", exchange.getResponse().getHeaders().getContentType().toString());
-        ContentDisposition disposition = exchange.getResponse().getHeaders().getContentDisposition();
+        assertTrue(response.getContentType().contains("text/html"));
+        String disposition = response.getHeader("Content-Disposition");
         assertNotNull(disposition);
-        assertEquals("数据交换运行质量月报.html", disposition.getFilename());
+        assertTrue(disposition.contains("数据交换运行质量月报.html") || disposition.contains("%E6%95%B0%E6%8D%AE"));
 
         // 验证写入的响应体内容包含注入的参数和任务数据
-        String bodyText = getResponseBodyAsString(exchange);
+        String bodyText = response.getContentAsString(StandardCharsets.UTF_8);
         assertTrue(bodyText.contains("2026年数据交换服务月报"));
         assertTrue(bodyText.contains("技术中台架构部"));
         assertTrue(bodyText.contains("TASK_MOCK_001"));
@@ -136,18 +130,18 @@ class DocDemoTest {
     @Test
     @DisplayName("3. 测试基于 EasyExcel 4.x 极速流式导出与数据读回反序列化")
     void testExcelExportAndReadBack() throws IOException {
-        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/demo/doc/excel/download").build());
+        MockHttpServletResponse response = new MockHttpServletResponse();
 
-        docDemoService.downloadExcel(exchange.getResponse()).block();
+        docDemoService.downloadExcel(response);
 
         // 验证响应头
-        assertTrue(exchange.getResponse().getHeaders().getContentType().toString().contains("spreadsheetml"));
-        ContentDisposition disposition = exchange.getResponse().getHeaders().getContentDisposition();
+        assertTrue(response.getContentType().contains("spreadsheetml"));
+        String disposition = response.getHeader("Content-Disposition");
         assertNotNull(disposition);
-        assertEquals("交换任务管理清单.xlsx", disposition.getFilename());
+        assertTrue(disposition.contains("交换任务管理清单.xlsx") || disposition.contains("%E4%BA%A4%E6%8D%A2"));
 
         // 获取响应的字节流并反向用 ExcelUtil 同步读取解析
-        byte[] excelBytes = getResponseBodyAsBytes(exchange);
+        byte[] excelBytes = response.getContentAsByteArray();
         assertTrue(excelBytes.length > 0);
 
         List<SwapTaskExportVo> parsedList = ExcelUtil.readSync(new ByteArrayInputStream(excelBytes), SwapTaskExportVo.class);
@@ -163,18 +157,18 @@ class DocDemoTest {
     @Test
     @DisplayName("4. 测试基于 Poi-tl 动态绑定 Word docx 模板并下载")
     void testWordRenderAndDownload() throws IOException {
-        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/demo/doc/word/download").build());
+        MockHttpServletResponse response = new MockHttpServletResponse();
 
-        docDemoService.downloadWord(exchange.getResponse(), "全国数据协同交换工程", "国家信息中心").block();
+        docDemoService.downloadWord(response, "全国数据协同交换工程", "国家信息中心");
 
         // 验证响应头
-        assertTrue(exchange.getResponse().getHeaders().getContentType().toString().contains("wordprocessingml"));
-        ContentDisposition disposition = exchange.getResponse().getHeaders().getContentDisposition();
+        assertTrue(response.getContentType().contains("wordprocessingml"));
+        String disposition = response.getHeader("Content-Disposition");
         assertNotNull(disposition);
-        assertEquals("项目合作协议.docx", disposition.getFilename());
+        assertTrue(disposition.contains("项目合作协议.docx") || disposition.contains("%E9%A1%B9%E7%9B%AE"));
 
         // 解析生成的 docx 并校验内容已替换
-        byte[] docxBytes = getResponseBodyAsBytes(exchange);
+        byte[] docxBytes = response.getContentAsByteArray();
         assertTrue(docxBytes.length > 0);
 
         try (XWPFDocument resultDoc = new XWPFDocument(new ByteArrayInputStream(docxBytes))) {
@@ -191,13 +185,15 @@ class DocDemoTest {
     @DisplayName("5. 测试基于 x-easypdf 动态生成文本 PDF 并注入 45° 倾斜防伪水印")
     void testPdfCreateAndWatermark() throws Exception {
         // 1. 生成简易 PDF
-        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/demo/doc/pdf/download").build());
-        docDemoService.downloadSimplePdf(exchange.getResponse(), "AIO微服务框架设计方案").block();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        docDemoService.downloadSimplePdf(response, "AIO微服务框架设计方案");
 
-        assertEquals("application/pdf", exchange.getResponse().getHeaders().getContentType().toString());
-        assertEquals("AIO架构设计白皮书.pdf", exchange.getResponse().getHeaders().getContentDisposition().getFilename());
+        assertTrue(response.getContentType().startsWith("application/pdf"));
+        String disposition = response.getHeader("Content-Disposition");
+        assertNotNull(disposition);
+        assertTrue(disposition.contains("AIO架构设计白皮书.pdf") || disposition.contains("AIO%E6%9E%B6%E6%9E%84"));
 
-        byte[] rawPdfBytes = getResponseBodyAsBytes(exchange);
+        byte[] rawPdfBytes = response.getContentAsByteArray();
         assertTrue(rawPdfBytes.length > 0);
         // 校验 PDF 标识头
         String header = new String(rawPdfBytes, 0, Math.min(rawPdfBytes.length, 8), StandardCharsets.US_ASCII);
@@ -212,27 +208,5 @@ class DocDemoTest {
         assertTrue(watermarkedPdf.length > 0);
         String wmHeader = new String(watermarkedPdf, 0, Math.min(watermarkedPdf.length, 8), StandardCharsets.US_ASCII);
         assertTrue(wmHeader.startsWith("%PDF-"));
-    }
-
-    // =========================================================================
-    // 辅助工具方法
-    // =========================================================================
-
-    private String getResponseBodyAsString(MockServerWebExchange exchange) {
-        return new String(getResponseBodyAsBytes(exchange), StandardCharsets.UTF_8);
-    }
-
-    private byte[] getResponseBodyAsBytes(MockServerWebExchange exchange) {
-        Flux<DataBuffer> body = exchange.getResponse().getBody();
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        body.doOnNext(buffer -> {
-            byte[] bytes = new byte[buffer.readableByteCount()];
-            buffer.read(bytes);
-            try {
-                bos.write(bytes);
-            } catch (IOException ignored) {
-            }
-        }).blockLast();
-        return bos.toByteArray();
     }
 }

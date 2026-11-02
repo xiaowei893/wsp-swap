@@ -31,3 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Runtime & Local Data ###
+data/
+logs/

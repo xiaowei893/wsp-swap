@@ -13,12 +13,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * 多存储数据源与缓存集成演示控制器
@@ -122,26 +120,28 @@ public class StorageDemoController {
     // =========================================================================
 
     @PostMapping("/redis/set")
-    @Operation(summary = "Redis: 写入缓存数据 (响应式)", description = "写入 Redis 缓存，由 aio.redis.key-prefix 自动追加 wsp-swap: 前缀")
-    public Mono<ResultBody<Boolean>> setRedisCache(
+    @Operation(summary = "Redis: 写入缓存数据", description = "写入 Redis 缓存，由 aio.redis.key-prefix 自动追加 wsp-swap: 前缀")
+    public ResultBody<Boolean> setRedisCache(
             @Parameter(description = "缓存Key", example = "status:task:1001")
             @RequestParam String key,
             @Parameter(description = "缓存值", example = "RUNNING")
             @RequestParam String value,
             @Parameter(description = "有效时长(秒)", example = "300")
             @RequestParam(defaultValue = "300") long expireSeconds) {
-        return swapCacheDemoService.setReactiveCache(key, value, expireSeconds)
-                .map(success -> ResultBody.success("缓存写入结果: " + success, success));
+        swapCacheDemoService.setSyncCache(key, value, expireSeconds);
+        return ResultBody.success("缓存写入成功", true);
     }
 
     @GetMapping("/redis/get")
-    @Operation(summary = "Redis: 获取缓存数据 (响应式)", description = "从 Redis 读取缓存，自动剥离前缀")
-    public Mono<ResultBody<String>> getRedisCache(
+    @Operation(summary = "Redis: 获取缓存数据", description = "从 Redis 读取缓存，自动剥离前缀")
+    public ResultBody<String> getRedisCache(
             @Parameter(description = "缓存Key", example = "status:task:1001")
             @RequestParam String key) {
-        return swapCacheDemoService.getReactiveCache(key)
-                .map(ResultBody::success)
-                .defaultIfEmpty(ResultBody.success("缓存不存在或已过期", null));
+        String value = swapCacheDemoService.getSyncCache(key, String.class);
+        if (value == null) {
+            return ResultBody.success("缓存不存在或已过期", null);
+        }
+        return ResultBody.success(value);
     }
 
     @PostMapping("/redis/lock-test")
@@ -151,5 +151,40 @@ public class StorageDemoController {
             @RequestParam(defaultValue = "TASK_SYNC_001") String taskCode) {
         String msg = swapCacheDemoService.executeTaskWithLock(taskCode);
         return ResultBody.success(msg);
+    }
+
+    // =========================================================================
+    // 4. @AioCache 统一多级缓存 (L1 Caffeine + L2 Redis)
+    // =========================================================================
+
+    @GetMapping("/multicache/task/{id}")
+    @Operation(summary = "多级缓存: 读取任务 (@AioCache)",
+               description = "演示两级缓存 (L1 本地 Caffeine + L2 远程 Redis)，首次未命中查 DB 并自动回填两级缓存，后续请求微秒级响应")
+    public ResultBody<SwapTask> getTaskMultiLevelCache(
+            @Parameter(description = "任务主键ID")
+            @PathVariable Long id) {
+        return swapCacheDemoService.getTaskMultiLevelCache(id)
+                .map(ResultBody::success)
+                .orElseGet(() -> ResultBody.failure("任务记录不存在"));
+    }
+
+    @PutMapping("/multicache/task")
+    @Operation(summary = "多级缓存: 强制刷新回写 (@AioCachePut)",
+               description = "更新数据库后同步回写刷新 L1+L2 缓存")
+    public ResultBody<SwapTask> putTaskMultiLevelCache(
+            @Parameter(description = "任务实体")
+            @RequestBody SwapTask task) {
+        SwapTask updated = swapCacheDemoService.updateTaskMultiLevelCache(task);
+        return ResultBody.success("多级缓存刷新成功", updated);
+    }
+
+    @DeleteMapping("/multicache/task/{id}")
+    @Operation(summary = "多级缓存: 驱逐失效 (@AioCacheEvict)",
+               description = "清理 L1+L2 缓存，并通过 Redis Pub/Sub 广播通知集群所有节点驱逐本地 Caffeine 缓存")
+    public ResultBody<String> evictTaskMultiLevelCache(
+            @Parameter(description = "任务主键ID")
+            @PathVariable Long id) {
+        swapCacheDemoService.evictTaskMultiLevelCache(id);
+        return ResultBody.success("任务 [" + id + "] 多级缓存已驱逐并广播集群");
     }
 }
